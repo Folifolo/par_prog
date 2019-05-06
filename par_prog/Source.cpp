@@ -11,7 +11,6 @@ using namespace std;
 
 void generate_matrix(double * A, int N)
 {
-#pragma omp parallel for
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < N; j++)
 			A[i*N + j] = rand() % 10;
@@ -52,11 +51,13 @@ public:
 					for (int j = 0; j < block_size; j++)
 					{
 						glob_cord = (ib_bs + i)*N + (jb_bs+ j);
+#pragma vector always
+#pragma ivdep
 						for (int k = 0; k < block_size; k++)
 						{
 							glob_cord_A = (ib_bs + i)*N + (j_new*block_size + k);
 							glob_cord_B = (loc_b_cord_i*block_size + k)*N + (jb_bs+ j);
-#pragma simd
+
 							C[glob_cord] += A[glob_cord_A] * B[glob_cord_B];
 						}
 					}
@@ -93,7 +94,7 @@ void matrix_multiplication_omp(double * A, double * B, double * C, int q, int N,
 			for (int i = 0; i < block_size; i++)
 				for (int j = 0; j < block_size; j++)
 				{
-					glob_cord = (ib_bs + i)*N + (jb_bs+ j);
+					glob_cord = (ib_bs + i)*N + (jb_bs + j);
 					C[glob_cord] = 0;
 				}
 			for (int m = 0; m < q; m++)
@@ -103,7 +104,7 @@ void matrix_multiplication_omp(double * A, double * B, double * C, int q, int N,
 				for (int i = 0; i < block_size; i++)
 					for (int j = 0; j < block_size; j++)
 					{
-						glob_cord = (ib_bs + i)*N + (jb_bs+ j);
+						glob_cord = (ib_bs + i)*N + (jb_bs + j);
 #pragma vector always
 #pragma ivdep
 						for (int k = 0; k < block_size; k++)
@@ -115,25 +116,66 @@ void matrix_multiplication_omp(double * A, double * B, double * C, int q, int N,
 			}
 		}
 	}
+	//for (int i = block_size * q; i < N; i++)
+	//	for (int j = 0; j < N; j++)
+	//	{
+	//		C[i*N + j] = 0;
+	//		for (int k = 0; k < N; k++)
+	//		{
+	//			C[i*N + j] += A[i*N + k] * B[k*N + j];
+	//		}
+	//	}
+	//for (int i = 0; i < N; i++)
+	//	for (int j = block_size * q; j < N; j++)
+	//	{
+	//		C[i*N + j] = 0;
+	//		for (int k = 0; k < N; k++)
+	//		{
+	//			C[i*N + j] += A[i*N + k] * B[k*N + j];
+	//		}
+	//	}
+	
+}
+void simple_mult(double * A, double * B, double * C, int N)
+{
+	for (int i = 0; i < N; i++)
+		for (int j = 0; j < N; j++)
+			for (int k = 0; k < N; k++)
+				C[i*N + j] += A[i*N + k] * B[k*N+j];
+}
+
+int compare(double * A, double * B, int N)
+{
+	double sum = 0;
+	for (int i = 0; i < N; i++)
+		for (int j = 0; j < N; j++)
+			sum += A[i*N + j] - B[i*N + j];
+	return sum;
 }
 
 int main()
 {
 
 	int q = 20;
-	const int N = 2000;
-	const int NT = 4;
+	const int N = 1000;
+	const int NT = 1;
 	//const int block_size = 2;
 	double* A = new double[N*N];
 	double* B = new double[N*N];
 	double* C = new double[N*N];
-	double* Res = new double[N*N];
+	double* A1 = new double[N*N];
+	double* B1 = new double[N*N];
+	double* C1 = new double[N*N];
 	generate_matrix(A, N);
 	generate_matrix(B, N);
-	int ijb = 10;
-	int block_i = ijb / q;
-	int block_j = ijb % q;
-	//cout << block_i << block_j;
+	for (int i = 0; i < N; i++)
+		for (int j = 0; j < N; j++)
+		{
+			A1[i*N + j] = A[i*N + j];
+			B1[i*N + j] = B[i*N + j];
+			C1[i*N + j] = 0;
+		}
+
 	//for (int i = 0; i < N; i++)
 	//{
 	//	for (int j = 0; j < N; j++)
@@ -150,8 +192,12 @@ int main()
 	//cout << "\n";
 
 	double start = omp_get_wtime();
-	matrix_multiplication_omp(A, B, C, q, N, NT);
+	matrix_multiplication_tbb(A, B, C, q, N, NT);
 	double finish = omp_get_wtime();
+	//simple_mult(A1, B1, C1, N);
+	//cout << "error: " <<compare(C, C1, N);
+	//cout << "\n";
+
 
 	//for (int i = 0; i < N; i++)
 	//{
@@ -160,7 +206,7 @@ int main()
 	//	cout << "\n";
 	//}
 	//cout << "\n";
-	cout << finish - start;
-	//cin >> q;
+	cout <<"time: " <<finish - start;
+	cin >> q;
 	return 0;
 }
